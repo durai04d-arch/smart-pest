@@ -1,0 +1,7 @@
+{
+  "name": "acoustic-pest-monitor-html-js",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HTML/CSS/JavaScript dashboard with Google Auth and Firebase Realtime Database, without Firestore or Firebase Storage.",
+  "dependencies": { "firebase-admin": "^12.7.0" }
+}

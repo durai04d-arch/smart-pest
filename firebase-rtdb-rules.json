@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "recordings": { ".read": "auth != null", ".write": false },
+    "audio": { ".read": "auth != null", ".write": false }
+  }
+}

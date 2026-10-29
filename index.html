@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827"><title>Acoustic Pest Monitor</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="#"><span class="brand-icon">◉</span><span>Acoustic<span class="brand-light">Pest</span><small>MONITORING CONSOLE</small></span></a><div class="top-right"><span id="connection" class="pill muted">Not connected</span><button id="loginBtn" class="btn btn-light">Continue with Google</button><div id="userBox" class="user-box hidden"><span id="userName"></span><button id="logoutBtn" class="btn btn-outline">Sign out</button></div></div></header>
+  <main class="container">
+    <section class="hero"><div><div class="eyebrow"><span class="pulse"></span> LIVE ACOUSTIC MONITORING</div><h1>Listen closer.<br><span>Protect smarter.</span></h1><p>Monitor audio clips captured by your ESP32 + INMP441 device. Recordings are stored in Firebase Realtime Database; no Firebase Storage or Firestore required.</p></div><div class="hero-art" aria-hidden="true"><div class="sound-ring r1"></div><div class="sound-ring r2"></div><div class="sound-ring r3"></div><div class="mic">♬</div></div></section>
+    <section id="configNotice" class="notice warning hidden"><strong>Firebase setup required</strong><span>Open <code>app.js</code> and fill in the Firebase web configuration and Realtime Database URL.</span></section>
+    <section id="loginNotice" class="notice"><div><strong>Sign in to access recordings</strong><p>Use the Google account allowed to view this monitoring dashboard.</p></div><button id="loginBtn2" class="btn btn-primary">Sign in with Google</button></section>
+    <section id="dashboard" class="hidden">
+      <div class="section-heading"><div><div class="eyebrow">OVERVIEW</div><h2>Monitoring dashboard</h2></div><button id="refreshBtn" class="btn btn-outline">↻ Refresh</button></div>
+      <div class="stats"><article class="stat-card"><div class="stat-label">TOTAL RECORDINGS</div><div id="totalCount" class="stat-value">—</div><div class="stat-foot">Audio clips received</div></article><article class="stat-card"><div class="stat-label">LATEST RECORDING</div><div id="latestTime" class="stat-value small-value">—</div><div class="stat-foot">Most recent device upload</div></article><article class="stat-card"><div class="stat-label">AI CLASSIFICATION</div><div id="aiStatus" class="stat-value">Pending</div><div class="stat-foot">Model integration required</div></article></div>
+      <div class="section-heading recordings-heading"><div><div class="eyebrow">DEVICE ACTIVITY</div><h2>Audio recordings</h2></div><input id="searchInput" class="search" type="search" placeholder="Search device or status…" aria-label="Search recordings"></div>
+      <div class="table-wrap"><table><thead><tr><th>RECORDING</th><th>DEVICE</th><th>RECEIVED</th><th>AI RESULT</th><th>AUDIO</th></tr></thead><tbody id="recordingsBody"><tr><td colspan="5" class="empty">Sign in to load recordings.</td></tr></tbody></table></div>
+      <div id="emptyState" class="empty-state hidden"><div class="empty-icon">♫</div><h3>No recordings yet</h3><p>When your ESP32 uploads a WAV clip, it will appear here.</p></div>
+      <div class="footnote">Audio clips are stored as Base64 data in Realtime Database. Large or frequent recordings can exhaust free-tier storage and bandwidth.</div>
+    </section>
+    <section class="how"><div><div class="eyebrow">SYSTEM FLOW</div><h2>From sound to insight</h2></div><div class="flow-grid"><div class="flow-item"><span>01</span><b>Capture</b><p>INMP441 microphone records a short audio clip.</p></div><div class="flow-item"><span>02</span><b>Upload</b><p>ESP32 sends WAV data to the secured Vercel API.</p></div><div class="flow-item"><span>03</span><b>Store</b><p>Vercel saves metadata and audio data in Realtime Database.</p></div><div class="flow-item"><span>04</span><b>Review</b><p>Google-authenticated users review and play recordings.</p></div></div></section>
+    <footer>ACOUSTIC PEST MONITOR <span>•</span> Prototype build · AI classification not yet enabled</footer>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+</body></html>

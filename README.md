@@ -1,30 +1,40 @@
-# Acoustic Pest Monitor
+# Acoustic Pest Monitor — HTML/CSS/JavaScript
 
-ESP32 + INMP441 -> HTTPS Vercel API -> Firebase Realtime Database (recording metadata + base64 WAV audio) -> React dashboard with Google sign-in and playback. No Firebase Storage and no Firestore are used. Classification is **Pending AI analysis** until a real trained model is integrated.
+This version uses plain HTML, CSS and browser JavaScript for the dashboard. It uses Firebase Google Authentication and Firebase Realtime Database only. It does **not** use Cloud Firestore or Firebase Storage. WAV bytes are stored as Base64 in Realtime Database, so keep clips short and monitor free-tier quotas.
 
-## Firebase setup
-1. Create a Firebase project at https://console.firebase.google.com/.
-2. Build -> Realtime Database -> Create Database. Choose a region and start in locked/production mode. Copy the database URL shown in the console.
-3. Build -> Authentication -> Sign-in method -> enable **Google**. Configure the support email and save.
-4. Authentication -> Settings -> Authorized domains: ensure `localhost` and your Vercel domain are listed.
-5. Project settings -> General -> register a Web app and copy the config.
-6. Project settings -> Service accounts -> generate a private service-account key. Keep it secret.
-7. Realtime Database -> Rules: publish `firebase/database.rules.json`.
+## 1. Firebase setup
+1. Create a Firebase project and register a Web app.
+2. Build → Authentication → Sign-in method → enable Google.
+3. Build → Realtime Database → Create database. Copy its exact URL.
+4. Authentication → Settings → Authorized domains: add `localhost` and your Vercel domain.
+5. Realtime Database → Rules: publish the contents of `firebase-rtdb-rules.json`.
+6. Project settings → Service accounts: generate a private key for server-side API use. Never commit it.
 
-## Local setup
-1. Copy `.env.example` to `.env.local`.
-2. Fill the web config, `NEXT_PUBLIC_FIREBASE_DATABASE_URL`, service-account `client_email`, `private_key`, project ID, and a long random `DEVICE_UPLOAD_TOKEN`. The public and server database URL values should match.
-3. Run `npm install`, then `npm run dev` and open http://localhost:3000.
-4. Sign in with Google and test the dashboard.
-5. In Vercel set every variable from `.env.local`, deploy, and copy the HTTPS deployment URL.
+## 2. Configure dashboard
+Edit `app.js`, replace all `YOUR_...` placeholders in `firebaseConfig` with your Firebase Web App values. `databaseURL` must be the exact Realtime Database URL from the console.
 
-## ESP32
-Open `firmware/AcousticPestMonitor.ino` in Arduino IDE, install ESP32 board support, fill Wi-Fi SSID/password, Vercel URL and same device token. Wire INMP441 VDD->3V3, GND->GND, SCK->GPIO26, WS->GPIO25, SD->GPIO33, L/R->GND. Firmware uploads 3-second, 16kHz, mono 16-bit PCM WAV files (~96KB).
+## 3. Run locally
+Use Node.js 18+:
+```bash
+npm install
+npx vercel dev
+```
+Open the local URL shown by Vercel. The API needs the server environment variables in `.env` or your Vercel local environment. For just UI preview, a static server can serve `index.html`, but device uploads require the Vercel API.
 
-## Storage design and limits
-To avoid Firebase Storage, this prototype stores each WAV file as a base64 string under `audio/{id}` in Realtime Database and stores metadata separately under `recordings/{id}`. Base64 increases the file size by roughly one-third. This is suitable for a small demo, not a large or long-running audio archive. Monitor your Realtime Database usage and free-tier quotas; keep clips short and delete old audio. Audio nodes are not readable directly by dashboard clients; playback goes through an authenticated API route. Admin SDK credentials remain server-only. Do not commit `.env.local` or service-account keys.
+## 4. Deploy
+Import this folder/repository into Vercel. Add all variables from `.env.example` under Project → Settings → Environment Variables. Redeploy. Do not place server-side values in `app.js`.
 
-Firmware currently uses `client.setInsecure()` for prototype compatibility: HTTPS is encrypted but server identity is not verified. Add CA certificate validation before production, plus rate limits and per-device credentials before public use.
+## 5. Device upload endpoint
+ESP32 sends raw WAV bytes to `POST https://YOUR-VERCEL-DOMAIN/api/device-upload` with headers:
+- `Content-Type: audio/wav`
+- `X-Device-Token: same value as DEVICE_UPLOAD_TOKEN`
+- `X-Device-Id: ESP32-INMP441` (optional)
 
-## AI status
-The current build stores and plays audio only. Realtime Database classification stays `Pending AI analysis`; no pest names are inferred from loudness. A trained classifier and labelled recordings are required to identify the 15 target pests.
+The API stores metadata under `/recordings/{id}` and Base64 audio under `/audio/{id}/base64`. This design uses no Firebase Storage. It currently accepts WAV files up to 500 KB. The firmware must send raw WAV bytes, not JSON.
+
+## Security notes
+- Realtime Database client rules allow authenticated reads only; all client writes are denied. Server Admin SDK bypasses rules.
+- API device token is a prototype shared secret. Rotate it if exposed. For production, use certificate validation and stronger device authentication.
+- Dashboard currently allows any Google-authenticated account to read records. Restrict by an explicit allowlist or custom claims before production.
+- Google sign-in uses a popup; serve over HTTPS in production.
+- This prototype does not perform pest AI classification. Classification remains “Pending AI analysis.”
