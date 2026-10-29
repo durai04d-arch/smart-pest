@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acoustic Pest Monitoring Dashboard</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#151f31;--line:#2c3b52;--muted:#a8b3c7;--blue:#3b82f6;--green:#86efac;--red:#fca5a5;--yellow:#fde68a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#eef2ff;font:15px/1.5 Arial,sans-serif}
+header{padding:24px 18px;border-bottom:1px solid var(--line);background:#101a2b}
+main{max-width:1150px;margin:auto;padding:20px 16px 50px}h1{margin:0;font-size:clamp(24px,4vw,34px)}h2{margin:0 0 14px;font-size:19px}p{margin:8px 0}.muted{color:var(--muted)}.small{font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:18px;margin-bottom:16px;min-width:0}
+.metric-label{color:var(--muted);font-size:13px}.metric{font-size:27px;font-weight:700;margin-top:5px;overflow-wrap:anywhere}
+label{display:block;color:#d7deeb;margin:10px 0 5px}input,select{width:100%;padding:11px;background:#0b1220;color:#eef2ff;border:1px solid #465772;border-radius:8px}
+button{background:var(--blue);color:white;border:0;border-radius:8px;padding:10px 14px;margin:8px 6px 0 0;cursor:pointer;font-weight:700}
+button.secondary{background:#334155}button:disabled{opacity:.5;cursor:not-allowed}
+.status{padding:12px;background:#0b1220;border:1px solid var(--line);border-radius:9px;overflow-wrap:anywhere;margin-top:12px}
+.success{color:var(--green)}.error{color:var(--red)}.warning{color:var(--yellow)}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.toolbar>*{flex:1;min-width:150px}
+.record{border-top:1px solid var(--line);padding:15px 0}.record:first-child{border-top:0}.record-head{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+.tag{font-size:12px;border-radius:99px;padding:3px 9px;background:#26364c;display:inline-block}
+audio{width:100%;margin-top:10px}.empty{padding:18px 0;color:var(--muted)}
+code{overflow-wrap:anywhere}
+@media(max-width:780px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:440px){.grid{grid-template-columns:1fr}.card{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <div style="max-width:1150px;margin:auto">
+    <h1>🎙️ Acoustic Pest Monitoring</h1>
+    <p class="muted">ESP32 status · Browser audio backups · Recording history</p>
+  </div>
+</header>
+<main>
+  <section class="card">
+    <h2>Firebase connection</h2>
+    <p class="muted small">Project: smart-pest-81ad2 · Realtime Database. Sign in with your Firebase Email/Password account. Never share your password or API key.</p>
+    <div class="toolbar">
+      <div><label for="apiKey">Firebase Web API key</label><input id="apiKey" placeholder="Paste Web API key" autocomplete="off"></div>
+      <div><label for="email">Firebase email</label><input id="email" type="email" autocomplete="username" placeholder="Email address"></div>
+      <div><label for="password">Firebase password</label><input id="password" type="password" autocomplete="current-password" placeholder="Password"></div>
+    </div>
+    <button id="connectBtn">Connect</button>
+    <button id="refreshBtn" class="secondary" disabled>Refresh data</button>
+    <button id="autoBtn" class="secondary" disabled>Enable auto-refresh</button>
+    <div id="connectionStatus" class="status">Not connected.</div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><div class="metric-label">Audio recordings loaded</div><div class="metric" id="recordCount">—</div></div>
+    <div class="card"><div class="metric-label">ESP32 status</div><div class="metric" id="espStatus">Unknown</div><div class="muted small" id="espTime">No test data loaded</div></div>
+    <div class="card"><div class="metric-label">Analysis pending</div><div class="metric" id="pendingCount">—</div></div>
+    <div class="card"><div class="metric-label">Pest detections reported</div><div class="metric" id="detectionCount">0</div><div class="muted small">Only if a classifier writes a pest result</div></div>
+  </section>
+
+  <section class="card">
+    <div class="record-head">
+      <div><h2>Audio recordings</h2><p class="muted small">Reads <code>/recordings</code>. Audio clips can be played here if the browser can decode their format.</p></div>
+      <div style="min-width:160px"><label for="filter">Filter source</label><select id="filter"><option value="all">All sources</option><option value="continuous_browser_microphone">Browser backup</option><option value="esp32">ESP32</option></select></div>
+    </div>
+    <div id="recordingsList"><div class="empty">Connect to Firebase to load recordings.</div></div>
+  </section>
+
+  <section class="card">
+    <h2>ESP32 connection test</h2>
+    <p class="muted small">Reads <code>/esp32_test/latest</code>. This path currently contains connection-test fields, not audio recordings.</p>
+    <pre id="espDetails" class="status" style="white-space:pre-wrap">No data loaded.</pre>
+  </section>
+
+  <section class="card">
+    <h2>About pest identification</h2>
+    <p class="muted">This dashboard displays recordings and any analysis fields already saved in Firebase. Uploading sound does not identify a pest by itself. To show species, confidence, or alerts, connect an audio-classification model that writes results into each recording record.</p>
+    <p class="muted small">Browser backup recordings are commonly WebM/Opus. Your dashboard does not modify or delete records.</p>
+  </section>
+</main>
+
+<script>
+"use strict";
+const DB_URL="https://smart-pest-81ad2-default-rtdb.asia-southeast1.firebasedatabase.app";
+const $=id=>document.getElementById(id);
+let idToken=null,refreshToken=null,tokenExpiry=0,autoTimer=null,autoOn=false;
+let lastRecords={};
+
+function setStatus(id,text,type=""){const e=$(id);e.textContent=text;e.className="status "+type;}
+async function request(url,options={}){
+  const response=await fetch(url,options);
+  const text=await response.text();let data={};
+  try{data=text?JSON.parse(text):{};}catch{data={message:text};}
+  if(!response.ok)throw new Error(data.error?.message||data.message||("HTTP "+response.status));
+  return data;
+}
+function setConnected(yes){
+  $("refreshBtn").disabled=!yes;
+  $("autoBtn").disabled=!yes;
+}
+async function login(){
+  const key=$("apiKey").value.trim(),email=$("email").value.trim(),password=$("password").value;
+  if(!key||!email||!password){setStatus("connectionStatus","Enter the API key, email, and password.","error");return;}
+  $("connectBtn").disabled=true;setStatus("connectionStatus","Signing in to Firebase...");
+  try{
+    const d=await request("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+encodeURIComponent(key),{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({email,password,returnSecureToken:true})
+    });
+    idToken=d.idToken;refreshToken=d.refreshToken;tokenExpiry=Date.now()+Number(d.expiresIn||3600)*1000;
+    setStatus("connectionStatus","Firebase connected. Loading dashboard data...","success");
+    setConnected(true);await loadDashboard();
+  }catch(e){idToken=null;setConnected(false);setStatus("connectionStatus","Login failed: "+e.message,"error");}
+  finally{$("connectBtn").disabled=false;}
+}
+async function getToken(){
+  if(!idToken)throw new Error("Connect to Firebase first.");
+  if(Date.now()<tokenExpiry-60000)return idToken;
+  if(!refreshToken)throw new Error("Session expired. Sign in again.");
+  const d=await request("https://securetoken.googleapis.com/v1/token?key="+encodeURIComponent($("apiKey").value.trim()),{
+    method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refreshToken})
+  });
+  idToken=d.id_token;refreshToken=d.refresh_token;tokenExpiry=Date.now()+Number(d.expires_in||3600)*1000;
+  return idToken;
+}
+function makeDbUrl(path,token){
+  return DB_URL.replace(/\/+$/,"")+"/"+path.split("/").map(encodeURIComponent).join("/")+".json?auth="+encodeURIComponent(token);
+}
+async function readPath(path){
+  const token=await getToken();
+  return request(makeDbUrl(path,token));
+}
+function safeText(value){return value===undefined||value===null?"—":String(value);}
+function decodeAudio(record){
+  if(!record.audioBase64)return null;
+  const binary=atob(record.audioBase64);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  return new Blob([bytes],{type:record.contentType||"audio/webm"});
+}
+function showRecordings(records){
+  lastRecords=records||{};
+  const filter=$("filter").value;
+  const all=Object.entries(lastRecords).reverse();
+  const shown=all.filter(([key,r])=>{
+    if(filter==="all")return true;
+    if(filter==="esp32")return String(r.source||r.device||"").toLowerCase().includes("esp32");
+    return String(r.source||"").includes("browser");
+  });
+  $("recordCount").textContent=all.length;
+  $("pendingCount").textContent=all.filter(([,r])=>(r.analysisStatus||"").toLowerCase()==="pending").length;
+  $("detectionCount").textContent=all.filter(([,r])=>r.pestDetected===true||r.pestName||r.predictedPest).length;
+  const list=$("recordingsList");list.replaceChildren();
+  if(!shown.length){const e=document.createElement("div");e.className="empty";e.textContent="No recordings match this filter.";list.append(e);return;}
+  for(const [key,r] of shown){
+    const article=document.createElement("article");article.className="record";
+    const head=document.createElement("div");head.className="record-head";
+    const left=document.createElement("div");
+    const title=document.createElement("strong");title.textContent=key;
+    const meta=document.createElement("p");meta.className="muted small";
+    meta.textContent=`${r.source||r.device||"Unknown source"} · ${r.contentType||"unknown format"} · ${r.sizeBytes||0} bytes · ${r.createdAt||r.timestamp||"time unavailable"}`;
+    left.append(title,meta);
+    const tag=document.createElement("span");tag.className="tag";
+    tag.textContent="Analysis: "+(r.analysisStatus||"not available");
+    head.append(left,tag);article.append(head);
+    const pest=r.pestName||r.predictedPest||r.classification||"";
+    if(pest){const result=document.createElement("p");result.textContent=`Pest result: ${pest}`+(r.confidence!==undefined?` · Confidence: ${r.confidence}`:"");article.append(result);}
+    if(r.audioBase64){
+      try{
+        const blob=decodeAudio(r),url=URL.createObjectURL(blob);
+        const audio=document.createElement("audio");audio.controls=true;audio.preload="none";audio.src=url;
+        audio.addEventListener("ended",()=>URL.revokeObjectURL(url),{once:true});
+        article.append(audio);
+      }catch{const p=document.createElement("p");p.className="muted small";p.textContent="Could not decode the stored audio.";article.append(p);}
+    }else{
+      const p=document.createElement("p");p.className="muted small";p.textContent="No audioBase64 field in this record.";article.append(p);
+    }
+    list.append(article);
+  }
+}
+async function loadDashboard(){
+  setStatus("connectionStatus","Loading recordings and ESP32 test status...");
+  try{
+    const [records,esp]=await Promise.all([
+      readPath("recordings"),
+      readPath("esp32_test/latest").catch(e=>({readError:e.message}))
+    ]);
+    showRecordings(records||{});
+    if(esp&&esp.readError){
+      $("espStatus").textContent="Unavailable";$("espTime").textContent=esp.readError;$("espDetails").textContent=esp.readError;
+    }else if(esp){
+      $("espStatus").textContent=esp.status||"Data found";
+      $("espTime").textContent=esp.uptime_ms!==undefined?("Uptime: "+esp.uptime_ms+" ms"):"ESP32 test record found";
+      $("espDetails").textContent=JSON.stringify(esp,null,2);
+    }else{
+      $("espStatus").textContent="No data";$("espTime").textContent="No test record";
+      $("espDetails").textContent="No data found at /esp32_test/latest.";
+    }
+    setStatus("connectionStatus","Dashboard refreshed successfully.","success");
+  }catch(e){setStatus("connectionStatus","Could not load dashboard: "+e.message,"error");}
+}
+function toggleAuto(){
+  if(autoOn){clearInterval(autoTimer);autoTimer=null;autoOn=false;$("autoBtn").textContent="Enable auto-refresh";setStatus("connectionStatus","Auto-refresh disabled.");}
+  else{autoTimer=setInterval(()=>{if(idToken)loadDashboard();},10000);autoOn=true;$("autoBtn").textContent="Disable auto-refresh";setStatus("connectionStatus","Auto-refresh enabled (every 10 seconds).","success");}
+}
+$("connectBtn").addEventListener("click",login);
+$("refreshBtn").addEventListener("click",loadDashboard);
+$("autoBtn").addEventListener("click",toggleAuto);
+$("filter").addEventListener("change",()=>showRecordings(lastRecords));
+setConnected(false);
+</script>
+</body>
+</html>
